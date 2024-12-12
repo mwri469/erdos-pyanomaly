@@ -16,6 +16,7 @@ import asyncio
 from pyanomaly.globals import *
 from pyanomaly.datatools import merge, to_month_end
 from pyanomaly.datatools import inspect_data
+from pyanomaly.config import *
 
 ################################################################################
 #
@@ -110,7 +111,7 @@ class WRDS:
 
         exchcd: https://wrds-www.wharton.upenn.edu/data-dictionary/form_metadata/crsp_a_stock_msf_identifyinginformation/exchcd/
     """
-    def __init__(self, wrds_username=None):
+    def __init__(self, wrds_username=None):      
         if wrds_username:
             self.db = wrds.Connection(wrds_username=wrds_username)
 
@@ -203,7 +204,7 @@ class WRDS:
                 SELECT {select}
                 FROM 
                     {library}.{table}
-                WHERE {date_col} between '{{}}' and '{{}}'
+                WHERE {date_col} between '{config.start_date}' and '{config.end_date}'
                 """
         print(sql)
         return sql
@@ -363,7 +364,7 @@ class WRDS:
             ON a.permno = b.permno
             AND b.namedt <= a.date
             AND a.date <= b.nameendt
-            WHERE a.date between '{{}}' and '{{}}'
+            WHERE a.date between '{config.start_date}' and '{config.end_date}'
             ORDER BY a.permno, a.date
         """
 
@@ -397,7 +398,7 @@ class WRDS:
             dlret, dlstcd, shrcd, exchcd, 
             distcd, divamt  
             FROM crsp.{seall}
-            WHERE date between '{{}}' and '{{}}'
+            WHERE date between '{config.start_date}' and '{config.end_date}'
         """
 
         self.download_table_async('crsp', seall, sql, sdate=sdate, edate=edate, run_in_executer=run_in_executer,
@@ -432,10 +433,9 @@ class WRDS:
                 comp.funda as f
             WHERE c.gvkey = f.gvkey
             AND f.indfmt = 'INDL' AND f.datafmt = 'STD' AND f.popsrc = 'D' AND f.consol = 'C'
-            AND datadate between '{{}}' and '{{}}'
+            AND datadate between '{config.start_date}' and '{config.end_date}'
             ORDER BY c.gvkey, datadate
             """
-
         src_tables = [('comp', 'funda'), ('comp', 'company')]
         self.download_table_async('comp', 'funda', sql, sdate=sdate, edate=edate, src_tables=src_tables,
                                   run_in_executer=run_in_executer,
@@ -475,7 +475,7 @@ class WRDS:
                 comp.fundq as f
             WHERE c.gvkey = f.gvkey
             AND f.indfmt = 'INDL' AND f.datafmt = 'STD' AND f.popsrc = 'D' AND f.consol = 'C'
-            AND datadate between '{{}}' and '{{}}'
+            AND datadate between '{config.start_date}' and '{config.end_date}'
             ORDER BY c.gvkey, datadate
             """
 
@@ -514,7 +514,7 @@ class WRDS:
                                   run_in_executer=run_in_executer,
                                   index_col=['datadate', 'gvkey'], sort_col=['gvkey', 'datadate'])
 
-    def download_all(self, run_in_executer=True):
+    def download_all(self, run_in_executer=False):
         """Download all tables.
 
         Currently, this method downloads the following tables:
@@ -534,15 +534,18 @@ class WRDS:
         Args:
             run_in_executer: If True, download concurrently. Faster (if network speed is high) but memory hungrier.
         """
+        # Start, end dates for data. Change in globals
+        sd = config.start_date
+        ed = config.end_date
 
-        self.download_funda(run_in_executer=run_in_executer)
-        self.download_fundq(run_in_executer=run_in_executer)
+        self.download_funda(run_in_executer=run_in_executer, sdate=sd, edate=ed)
+        self.download_fundq(run_in_executer=run_in_executer, sdate=sd, edate=ed)
         self.download_table('comp', 'exrt_dly', date_cols=['datadate'])
 
-        self.download_sf(monthly=True, run_in_executer=run_in_executer)
-        self.download_sf(monthly=False, run_in_executer=run_in_executer)
-        self.download_seall(monthly=True, run_in_executer=run_in_executer)
-        self.download_seall(monthly=False, run_in_executer=run_in_executer)
+        self.download_sf(monthly=True, run_in_executer=run_in_executer, sdate=sd, edate=ed)
+        self.download_sf(monthly=False, run_in_executer=run_in_executer, sdate=sd, edate=ed)
+        self.download_seall(monthly=True, run_in_executer=run_in_executer, sdate=sd, edate=ed)
+        self.download_seall(monthly=False, run_in_executer=run_in_executer, sdate=sd, edate=ed)
         self.download_table('crsp', 'mcti', date_cols=['caldt'])
         self.download_table('ff', 'factors_monthly', date_cols=['date', 'dateff'])
         self.download_table('ff', 'factors_daily', date_cols=['date'])
