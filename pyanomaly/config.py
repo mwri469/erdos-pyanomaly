@@ -96,6 +96,8 @@ config = struct(
 
     # Print debugging messages.
     debug=False,
+    start_date = '1920-01-01',
+    end_date = '2024-01-01',
 )
 
 
@@ -120,7 +122,7 @@ def set_config(**kwargs):
             v += '/'
 
         # Check if the value is valid.
-        if k == 'fioat_type':
+        if k == 'float_type':
             assert v in ('float32', 'float64')
         elif k == 'file_format':
             assert v in ('parquet', 'pickle')
@@ -129,6 +131,8 @@ def set_config(**kwargs):
         elif k == 'numba_num_threads':
             assert v <= nb.config.NUMBA_NUM_THREADS
             nb.set_num_threads(v)
+        elif k == 'start_date' or k == 'end_date':
+            assert is_valid_date(v)
 
         config[k] = v
 
@@ -148,6 +152,43 @@ def get_config(attr):
     """
 
     return config[attr]
+
+def is_valid_date(date_string: str) -> bool:
+    """
+    Checks if the given string is a valid date in the format YYYY-MM-DD without using any imports.
+
+    Args:
+        date_string: The string to be validated.
+
+    Returns:
+        True if the string is a valid date, False otherwise.
+    """
+    try:
+        year_str, month_str, day_str = date_string.split('-')
+        year = int(year_str)
+        month = int(month_str)
+        day = int(day_str)
+
+        # Basic checks for valid ranges
+        if not (1 <= month <= 12):
+            return False
+        if not (1 <= day <= 31):
+            return False
+
+        # Check for leap year if February
+        if month == 2:
+            if day > 29:
+                return False
+            if day == 29 and not (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)):
+                return False
+
+        # Handle months with 30 days
+        if month in (4, 6, 9, 11) and day > 30:
+            return False
+
+        return True
+    except (ValueError, IndexError):
+        return False
 
 
 ########################################
