@@ -1,0 +1,8 @@
+pandas
+wrds
+statsmodels
+numba
+openpyxl
+matplotlib
+scikit-learn
+pyarrow
