@@ -123,7 +123,7 @@ def set_config(**kwargs):
 
         # Check if the value is valid.
         if k == 'float_type':
-            assert v in ('float32', 'float64')
+            assert v in ('float16', 'float32', 'float64')
         elif k == 'file_format':
             assert v in ('parquet', 'pickle')
         elif k in ('replicate_jkp', 'jit_parallel', 'disable_jit', 'debug'):
