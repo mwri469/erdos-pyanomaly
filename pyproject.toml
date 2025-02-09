@@ -4,3 +4,14 @@ requires = [
     "wheel"
 ]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "erdos-pyanomaly"
+version = "0.0.1.dev0"
+license = {file = "LICENSE.txt"}
+
+description = "Python library for firm characteristic generation"
+authors = [{name = "Chulwoo Han and Martin Wright"}]
+maintainers = [
+    {name = "Martin Wright", email="martinwrightnz@icloud.com"},
+]
