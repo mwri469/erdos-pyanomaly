@@ -373,43 +373,6 @@ class WRDS:
                                 run_in_executer=run_in_executer,
                                 index_col=['date', 'permno'], sort_col=['permno', 'date'])
 
-    def download_sf_(self, sdate=None, edate=None, monthly=True, run_in_executer=True):
-        """ Download crsp.m(d)sf joined with crsp.m(d)senames.
-
-        Downloaded data has index = date/permno and is sorted on permno/date.
-
-        Args:
-            sdate: Start date, e.g., '2000-01-01'. Set to None to download all data.
-            edate: End date. Set to None to download all data.
-            monthly: If True download msf else dsf.
-            run_in_executer: If True, download concurrently. Faster but memory hungrier.
-        """
-
-        if monthly:
-            fields = 'a.*, b.shrcd, b.exchcd, b.siccd, b.ncusip'
-            sf = 'msf'
-            senames = 'msenames'
-        else:  # for dsf, download only necessary columns to reduce file size.
-            fields = 'a.permno, a.permco, a.date, bidlo, askhi, prc, ret, vol, shrout, cfacpr, cfacshr, b.shrcd, b.exchcd'
-            sf = 'dsf'
-            senames = 'dsenames'
-
-        sql = f"""
-            SELECT {fields}
-            FROM crsp.{sf} as a
-            LEFT JOIN crsp.{senames} as b
-            ON a.permno = b.permno
-            AND b.namedt <= a.date
-            AND a.date <= b.nameendt
-            WHERE a.date between '{config.start_date}' and '{config.end_date}'
-            ORDER BY a.permno, a.date
-        """
-
-        src_tables = [('crsp_q_stock', sf), ('crsp_q_stock', senames)]
-        self.download_table_async('crsp', sf, sql, sdate=sdate, edate=edate, src_tables=src_tables,
-                                  run_in_executer=run_in_executer,
-                                  index_col=['date', 'permno'], sort_col=['permno', 'date'])
-
     def download_seall(self, sdate=None, edate=None, monthly=True, run_in_executer=True):
         """Download delist and dividend info from crsp_q_stock.m(d)seall. NEW
 
@@ -440,37 +403,6 @@ class WRDS:
 
         self.download_table_async('crsp', seall, sql, sdate=sdate, edate=edate, run_in_executer=run_in_executer,
                                 index_col=['date', 'permno'], sort_col=['permno', 'date'])
-
-    def download_seall_(self, sdate=None, edate=None, monthly=True, run_in_executer=True):
-        """Download delist and dividend info from crsp.m(d)seall. OG
-
-        Delist can be obtained from either mseall or msedelist. We use mseall since it contains exchcd, which is used
-        when replacing missing dlret.
-        The shrcd and exchcd in mseall are usually those before halting/suspension. If a stock in NYSE is halted, exchcd
-        in msenames can be -2, whereas that in mseall is 1.
-        The downloaded fields are: permno, date, dlret, dlstcd, shrcd, exchcd, distcd, divamt.
-        Downloaded data has index = date/permno and is sorted on permno/date.
-
-
-        Args:
-            sdate: Start date, e.g., '2000-01-01'. Set to None to download all data.
-            edate: End date. Set to None to download all data.
-            monthly: If True download mseall else dseall.
-            run_in_executer: If True, download concurrently. Faster but memory hungrier.
-        """
-
-        seall = 'mseall' if monthly else 'dseall'
-
-        sql = f"""
-            SELECT distinct permno, date, 
-            dlret, dlstcd, shrcd, exchcd, 
-            distcd, divamt  
-            FROM crsp.{seall}
-            WHERE date between '{config.start_date}' and '{config.end_date}'
-        """
-
-        self.download_table_async('crsp', seall, sql, sdate=sdate, edate=edate, run_in_executer=run_in_executer,
-                                  index_col=['date', 'permno'], sort_col=['permno', 'date'])
 
     def download_funda(self, sdate=None, edate=None, run_in_executer=True):
         """Download comp.funda.
@@ -612,7 +544,7 @@ class WRDS:
         self.download_sf(monthly=False, run_in_executer=run_in_executer)
         self.download_seall(monthly=True, run_in_executer=run_in_executer)
         self.download_seall(monthly=False, run_in_executer=run_in_executer)
-        self.download_table('crsp_q_stock', 'mcti', date_cols=['caldt'])
+        self.download_table('crsp_q_indexes', 'mcti', date_cols=['caldt'])
         self.download_table('ff', 'factors_monthly', date_cols=['date', 'dateff'])
         self.download_table('ff', 'factors_daily', date_cols=['date'])
 
