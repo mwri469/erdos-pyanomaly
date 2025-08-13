@@ -16,7 +16,7 @@ import asyncio
 from pyanomaly.globals import *
 from pyanomaly.datatools import merge, to_month_end
 from pyanomaly.datatools import inspect_data
-from pyanomaly.config import *
+from pyanomaly.config import config
 
 ################################################################################
 #
@@ -111,7 +111,7 @@ class WRDS:
 
         exchcd: https://wrds-www.wharton.upenn.edu/data-dictionary/form_metadata/crsp_a_stock_msf_identifyinginformation/exchcd/
     """
-    def __init__(self, wrds_username=None):      
+    def __init__(self, wrds_username=None):
         if wrds_username:
             self.db = wrds.Connection(wrds_username=wrds_username)
 
@@ -204,7 +204,7 @@ class WRDS:
                 SELECT {select}
                 FROM 
                     {library}.{table}
-                WHERE {date_col} between '{config.start_date}' and '{config.end_date}'
+                WHERE {date_col} between '{{}}' and '{{}}'
                 """
         print(sql)
         return sql
@@ -284,7 +284,7 @@ class WRDS:
 
         # Make a list of sub-periods.
         ldate = edate or str(dt.datetime.now())[:10]  # last date
-        sdate = sdate or '1900-01-01'  # sub-period start date
+        sdate = sdate or config.start_date  # sub-period start date
         edate = min(str(pd.Timestamp(sdate) + pd.DateOffset(years=interval, days=-1))[:10], ldate)  # sub-period end date
 
         dates = []
@@ -337,6 +337,43 @@ class WRDS:
         elapsed_time(f'Download complete: {table}')
 
     def download_sf(self, sdate=None, edate=None, monthly=True, run_in_executer=True):
+        """ Download crsp_q_stock.m(d)sf joined with crsp_q_stock.m(d)senames.
+
+        Downloaded data has index = date/permno and is sorted on permno/date.
+
+        Args:
+            sdate: Start date, e.g., '2000-01-01'. Set to None to download all data.
+            edate: End date. Set to None to download all data.
+            monthly: If True download msf else dsf.
+            run_in_executer: If True, download concurrently. Faster but memory hungrier.
+        """
+
+        if monthly:
+            fields = 'a.*, b.shrcd, b.exchcd, b.siccd, b.ncusip'
+            sf = 'msf'
+            senames = 'msenames'
+        else:  # for dsf, download only necessary columns to reduce file size.
+            fields = 'a.permno, a.permco, a.date, bidlo, askhi, prc, ret, vol, shrout, cfacpr, cfacshr, b.shrcd, b.exchcd'
+            sf = 'dsf'
+            senames = 'dsenames'
+
+        sql = f"""
+            SELECT {fields}
+            FROM crsp_q_stock.{sf} as a
+            LEFT JOIN crsp_q_stock.{senames} as b
+            ON a.permno = b.permno
+            AND b.namedt <= a.date
+            AND a.date <= b.nameendt
+            WHERE a.date between '{{}}' and '{{}}'
+            ORDER BY a.permno, a.date
+        """
+
+        src_tables = [('crsp_q_stock', sf), ('crsp_q_stock', senames)]
+        self.download_table_async('crsp_q_stock', sf, sql, sdate=sdate, edate=edate, src_tables=src_tables,
+                                run_in_executer=run_in_executer,
+                                index_col=['date', 'permno'], sort_col=['permno', 'date'])
+
+    def download_sf_(self, sdate=None, edate=None, monthly=True, run_in_executer=True):
         """ Download crsp.m(d)sf joined with crsp.m(d)senames.
 
         Downloaded data has index = date/permno and is sorted on permno/date.
@@ -368,13 +405,44 @@ class WRDS:
             ORDER BY a.permno, a.date
         """
 
-        src_tables = [('crsp', sf), ('crsp', senames)]
+        src_tables = [('crsp_q_stock', sf), ('crsp_q_stock', senames)]
         self.download_table_async('crsp', sf, sql, sdate=sdate, edate=edate, src_tables=src_tables,
                                   run_in_executer=run_in_executer,
                                   index_col=['date', 'permno'], sort_col=['permno', 'date'])
 
     def download_seall(self, sdate=None, edate=None, monthly=True, run_in_executer=True):
-        """Download delist and dividend info from crsp.m(d)seall.
+        """Download delist and dividend info from crsp_q_stock.m(d)seall. NEW
+
+        Delist can be obtained from either mseall or msedelist. We use mseall since it contains exchcd, which is used
+        when replacing missing dlret.
+        The shrcd and exchcd in mseall are usually those before halting/suspension. If a stock in NYSE is halted, exchcd
+        in msenames can be -2, whereas that in mseall is 1.
+        The downloaded fields are: permno, date, dlret, dlstcd, shrcd, exchcd, distcd, divamt.
+        Downloaded data has index = date/permno and is sorted on permno/date.
+
+
+        Args:
+            sdate: Start date, e.g., '2000-01-01'. Set to None to download all data.
+            edate: End date. Set to None to download all data.
+            monthly: If True download mseall else dseall.
+            run_in_executer: If True, download concurrently. Faster but memory hungrier.
+        """
+
+        seall = 'mseall' if monthly else 'dseall'
+
+        sql = f"""
+            SELECT distinct permno, date, 
+            dlret, dlstcd, shrcd, exchcd, 
+            distcd, divamt  
+            FROM crsp_q_stock.{seall}
+            WHERE date between '{{}}' and '{{}}'
+        """
+
+        self.download_table_async('crsp', seall, sql, sdate=sdate, edate=edate, run_in_executer=run_in_executer,
+                                index_col=['date', 'permno'], sort_col=['permno', 'date'])
+
+    def download_seall_(self, sdate=None, edate=None, monthly=True, run_in_executer=True):
+        """Download delist and dividend info from crsp.m(d)seall. OG
 
         Delist can be obtained from either mseall or msedelist. We use mseall since it contains exchcd, which is used
         when replacing missing dlret.
@@ -433,9 +501,10 @@ class WRDS:
                 comp.funda as f
             WHERE c.gvkey = f.gvkey
             AND f.indfmt = 'INDL' AND f.datafmt = 'STD' AND f.popsrc = 'D' AND f.consol = 'C'
-            AND datadate between '{config.start_date}' and '{config.end_date}'
+            AND datadate between '{{}}' and '{{}}'
             ORDER BY c.gvkey, datadate
             """
+
         src_tables = [('comp', 'funda'), ('comp', 'company')]
         self.download_table_async('comp', 'funda', sql, sdate=sdate, edate=edate, src_tables=src_tables,
                                   run_in_executer=run_in_executer,
@@ -475,7 +544,7 @@ class WRDS:
                 comp.fundq as f
             WHERE c.gvkey = f.gvkey
             AND f.indfmt = 'INDL' AND f.datafmt = 'STD' AND f.popsrc = 'D' AND f.consol = 'C'
-            AND datadate between '{config.start_date}' and '{config.end_date}'
+            AND datadate between '{{}}' and '{{}}'
             ORDER BY c.gvkey, datadate
             """
 
@@ -514,7 +583,7 @@ class WRDS:
                                   run_in_executer=run_in_executer,
                                   index_col=['datadate', 'gvkey'], sort_col=['gvkey', 'datadate'])
 
-    def download_all(self, run_in_executer=False):
+    def download_all(self, run_in_executer=True):
         """Download all tables.
 
         Currently, this method downloads the following tables:
@@ -534,19 +603,16 @@ class WRDS:
         Args:
             run_in_executer: If True, download concurrently. Faster (if network speed is high) but memory hungrier.
         """
-        # Start, end dates for data. Change in globals
-        sd = config.start_date
-        ed = config.end_date
 
-        self.download_funda(run_in_executer=run_in_executer, sdate=sd, edate=ed)
-        self.download_fundq(run_in_executer=run_in_executer, sdate=sd, edate=ed)
+        self.download_funda(run_in_executer=run_in_executer)
+        self.download_fundq(run_in_executer=run_in_executer)
         self.download_table('comp', 'exrt_dly', date_cols=['datadate'])
 
-        self.download_sf(monthly=True, run_in_executer=run_in_executer, sdate=sd, edate=ed)
-        self.download_sf(monthly=False, run_in_executer=run_in_executer, sdate=sd, edate=ed)
-        self.download_seall(monthly=True, run_in_executer=run_in_executer, sdate=sd, edate=ed)
-        self.download_seall(monthly=False, run_in_executer=run_in_executer, sdate=sd, edate=ed)
-        self.download_table('crsp', 'mcti', date_cols=['caldt'])
+        self.download_sf(monthly=True, run_in_executer=run_in_executer)
+        self.download_sf(monthly=False, run_in_executer=run_in_executer)
+        self.download_seall(monthly=True, run_in_executer=run_in_executer)
+        self.download_seall(monthly=False, run_in_executer=run_in_executer)
+        self.download_table('crsp_q_stock', 'mcti', date_cols=['caldt'])
         self.download_table('ff', 'factors_monthly', date_cols=['date', 'dateff'])
         self.download_table('ff', 'factors_daily', date_cols=['date'])
 
@@ -654,6 +720,98 @@ class WRDS:
 
     @staticmethod
     def add_gvkey_to_crsp(sf):
+        """Add gvkey to m(d)sf and identify primary stocks.
+
+        The permno and gvkey are mapped using crsp_q_stock.ccmxpf_linktable.
+
+        Primary stocks are identified in the following order.
+
+            1. If linkprim = 'P' or 'C', set the security as primary.
+            2. If permno and gvkey have 1:1 mapping, set the security as primary.
+            3. Among the securities with the same gvkey, set the one with the maximum trading volume as primary.
+            4. Among the securities with the same permco and missing gvkey, set the one with the maximum trading volume
+            as primary.
+
+        Args:
+            sf: m(d)sf DataFrame with index = date/permno.
+
+        Returns:
+            m(d)sf with 'gveky' and 'primary' (primary stock indicator) columns added.
+
+        References:
+            https://wrds-www.wharton.upenn.edu/pages/support/research-wrds/macros/wrds-macros-cvccmlnksas/
+
+            https://wrds-www.wharton.upenn.edu/pages/support/applications/linking-databases/linking-crsp-and-compustat/
+        """
+
+        elapsed_time('Adding gvkey to crsp...')
+
+        # Try to read from crsp_q_stock first, fall back to crsp if not found
+        try:
+            link = WRDS.read_data('ccmxpf_linktable', 'crsp_q_stock')
+        except:
+            link = WRDS.read_data('ccmxpf_linktable', 'crsp')
+        
+        link = link[~link.lpermno.isna()]
+        link = link[link.usedflag == 1]
+        link = link[link.linktype.isin(['LC', 'LU', 'LS'])]  # primary links only
+        # link = link[link.linktype.isin(['LC', 'LN', 'LU', 'LX', 'LD', 'LS'])]  # primary and secondary links
+        link = link[['lpermno', 'gvkey', 'linkdt', 'linkenddt', 'linkprim']].rename(columns={'lpermno': 'permno'})
+
+        # Exceptions
+        link.loc[(link.gvkey == '002759') & (link.linkdt == '1985-09-26') & (link.permno == 66843), 'linkprim'] = 'C'
+        link.loc[(link.gvkey == '013699') & (link.linkdt == '1988-08-25') & (link.permno == 75189), 'linkprim'] = 'C'
+        link.loc[(link.gvkey == '004162') & (link.linkdt == '2002-10-01') & (link.permno == 31318), 'linkprim'] = 'C'
+
+        sf1 = sf[['permco']].reset_index()
+        sf1['dvol'] = (sf.prc.abs() * sf.vol).to_numpy()  # dollar volume
+
+        # To use merge_asof, data should be sorted.
+        sf1 = sf1.sort_values('date')
+        link = link.sort_values('linkdt')
+
+        # merge sf with link. linkdt <= date <= linkenddt
+        sf_idx = sf1.index
+        sf1 = pd.merge_asof(sf1, link, left_on='date', right_on='linkdt', by='permno')
+        sf1.set_index(sf_idx, inplace=True)
+        sf1.loc[sf1.date > sf1.linkenddt, ['gvkey', 'linkprim']] = None
+
+        # Primary identification
+        sf1['primary'] = False
+        sf1.loc[sf1.linkprim.isin(['P', 'C']), 'primary'] = True
+
+        gb1 = sf1.groupby(['date', 'gvkey'])
+        sf1.loc[gb1.permno.transform('size') == 1, 'primary'] = True  # Primary if permno and gveky are 1:1
+
+        # Primary identification by volume
+        # We first group by gvkey and then by permco since they are not always 1:1.
+        sf1['max_dvol'] = gb1['dvol'].transform('max')
+        sf1['nprimary'] = gb1.primary.transform('sum')  # num. primary (0 means unidentified)
+        sf1.loc[(sf1.nprimary == 0) & (sf1.dvol == sf1.max_dvol), 'primary'] = True
+
+        gb2 = sf1.groupby(['date', 'permco'])
+        sf1['max_dvol'] = gb2['dvol'].transform('max')
+        sf1['nprimary'] = gb2.primary.transform('sum')  # num. primary (0 means unidentified)
+        sf1.loc[sf1.gvkey.isna() & (sf1.nprimary == 0) & (sf1.dvol == sf1.max_dvol), 'primary'] = True
+
+        # Check missing or dup
+        nprimary = gb1.primary.sum()
+        if (nprimary != 1).any():
+            log('Primary missing or dup.')
+            log(nprimary[nprimary != 1])
+
+        # sf1.set_index(['date', 'permno'], inplace=True)
+        # sf[['gvkey', 'primary']] = sf1[['gvkey', 'primary']]
+        sf1.sort_index(inplace=True)
+        sf['gvkey'] = sf1['gvkey'].to_numpy()
+        sf['primary'] = sf1['primary'].to_numpy()
+
+        elapsed_time(f'gvkey added to crsp: crsp shape: {sf.shape}, missing gvkey: {sf.gvkey.isna().sum()}')
+        log(f'No. unique permnos: {len(sf.index.get_level_values(-1).unique())}, no. unique gvkeys: {len(sf.gvkey.unique())}')
+        return sf
+
+    @staticmethod
+    def add_gvkey_to_crsp_(sf):
         """Add gvkey to m(d)sf and identify primary stocks.
 
         The permno and gvkey are mapped using crsp.ccmxpf_linktable.
@@ -909,6 +1067,41 @@ class WRDS:
 
     @staticmethod
     def get_risk_free_rate(sdate=None, edate=None, src='mcti', month_end=False):
+        """Get risk-free rate.
+
+        The risk-free rate can be obtained either from crsp_q_stock.mcti or ff.factors_monthly.
+        The mcti is preferred since the values in factors_monthly have only 4 decimal places.
+        Both risk-free rates are in decimal (not percentage values).
+
+        Args:
+            sdate: Start date.
+            edate: End date.
+            src: data source. 'mcti': crsp_q_stock.mcti, 'ff': ff.factors_monthly.
+            month_end: If True, shift dates to the end of the month.
+
+        Returns:
+            DataFrame of risk-free rates with index = 'date' and columns = ['rf'].
+        """
+
+        if src == 'mcti':
+            # Try crsp_q_stock first, fall back to crsp
+            try:
+                rf = WRDS.read_data('mcti', 'crsp_q_stock')[['caldt', 't30ret']]
+            except:
+                rf = WRDS.read_data('mcti')[['caldt', 't30ret']]
+            rf = rf.rename(columns={'caldt': 'date', 't30ret': 'rf'}).set_index('date')
+        elif src == 'ff':
+            rf = WRDS.read_data('factors_monthly')[['dateff', 'rf']]
+            rf = rf.rename(columns={'dateff': 'date'}).set_index('date')
+        else:
+            raise ValueError(f'Undefined risk free data source: {src}')
+
+        if month_end:
+            rf.index = to_month_end(rf.index)
+        return rf.loc[sdate:edate]
+
+    @staticmethod
+    def get_risk_free_rate_(sdate=None, edate=None, src='mcti', month_end=False):
         """Get risk-free rate.
 
         The risk-free rate can be obtained either from crsp.mcti or ff.factors_monthly.
