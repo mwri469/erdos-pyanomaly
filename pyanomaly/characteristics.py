@@ -2192,12 +2192,9 @@ class CRSPM(FCPanel):
         div = (cm.ret - cm.retx) * cm.cfacpr * self.shift(cm.prc / cm.cfacpr) * cm.shrout
         div12m = self.rolling(div, 12, 'sum')  # Total dividend over the past 1 year.
         # Set char = nan if div_tot = 0 (JKP do not impose this). (from ver 1.0)
-
-        # Handle NA vals
-        is_zero_div12m = is_zero(div12m) | pd.isna(div12m)
-        is_zero_cm_me = is_zero(div12m) | pd.isna(div12m)
-
-        char = np.where(is_zero_div12m | is_zero_cm_me, np.nan, div12m/ cm.me)
+        is_zero_div12m = (div12m == 0) | np.isnan(div12m)
+        is_zero_cm_me = (cm.me == 0) | np.isnan(cm.me)
+        char = np.where(is_zero_div12m | is_zero_cm_me, np.nan, div12m / cm.me)
         return char
 
     def c_chcsho_12m(self):
