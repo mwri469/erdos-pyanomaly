@@ -3119,6 +3119,8 @@ class CRSPD(FCPanel):
             return retval
 
         value = self.cd._to_value(data)
+        # Convert to non-object type for njit-compatible array
+        value = pd.to_numeric(value.ravel(), errors='coerce').reshape(value.shape)
         gsize = self.cd.get_id_group_size()
         gsize2 = self.get_id_group_size()
 
