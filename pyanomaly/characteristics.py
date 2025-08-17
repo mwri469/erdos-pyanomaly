@@ -1020,7 +1020,8 @@ class FUNDA(FCPanel):
 
         edc = T + 1 + 1 / r
         eq_dur = ed_cdw / fa.me + edc * (fa.me - ed_cd) / fa.me
-        eq_dur = np.where((ed_err == 1) | (eq_dur <= 1), np.nan, eq_dur)
+        mask = (ed_err == 1) | (eq_dur <= 1) | pd.isna(ed_err) | pd.isna(eq_dur)
+        eq_dur = np.where(mask, np.nan, eq_dur)
         return eq_dur
 
     def c_f_score(self):
