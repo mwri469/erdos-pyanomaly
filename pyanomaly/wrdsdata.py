@@ -369,7 +369,7 @@ class WRDS:
         """
 
         src_tables = [('crsp_q_stock', sf), ('crsp_q_stock', senames)]
-        self.download_table_async('crsp_q_stock', sf, sql, sdate=sdate, edate=edate, src_tables=src_tables,
+        self.download_table_async('crsp', sf, sql, sdate=sdate, edate=edate, src_tables=src_tables,
                                 run_in_executer=run_in_executer,
                                 index_col=['date', 'permno'], sort_col=['permno', 'date'])
 
