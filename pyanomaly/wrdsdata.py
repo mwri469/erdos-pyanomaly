@@ -204,7 +204,7 @@ class WRDS:
                 SELECT {select}
                 FROM 
                     {library}.{table}
-                WHERE {date_col} between '{{}}' and '{{}}'
+                WHERE {date_col} between '{config.start_date}' and '{config.end_date}'
                 """
         print(sql)
         return sql
@@ -364,7 +364,7 @@ class WRDS:
             ON a.permno = b.permno
             AND b.namedt <= a.date
             AND a.date <= b.nameendt
-            WHERE a.date between '{{}}' and '{{}}'
+            WHERE a.date between '{config.start_date}' and '{config.end_date}'
             ORDER BY a.permno, a.date
         """
 
@@ -398,7 +398,7 @@ class WRDS:
             dlret, dlstcd, shrcd, exchcd, 
             distcd, divamt  
             FROM crsp_q_stock.{seall}
-            WHERE date between '{{}}' and '{{}}'
+            WHERE date between '{config.start_date}' and '{config.end_date}'
         """
 
         self.download_table_async('crsp', seall, sql, sdate=sdate, edate=edate, run_in_executer=run_in_executer,
@@ -433,7 +433,7 @@ class WRDS:
                 comp.funda as f
             WHERE c.gvkey = f.gvkey
             AND f.indfmt = 'INDL' AND f.datafmt = 'STD' AND f.popsrc = 'D' AND f.consol = 'C'
-            AND datadate between '{{}}' and '{{}}'
+            AND datadate between '{config.start_date}' and '{config.end_date}'
             ORDER BY c.gvkey, datadate
             """
 
@@ -476,7 +476,7 @@ class WRDS:
                 comp.fundq as f
             WHERE c.gvkey = f.gvkey
             AND f.indfmt = 'INDL' AND f.datafmt = 'STD' AND f.popsrc = 'D' AND f.consol = 'C'
-            AND datadate between '{{}}' and '{{}}'
+            AND datadate between '{config.start_date}' and '{config.end_date}'
             ORDER BY c.gvkey, datadate
             """
 
