@@ -3069,7 +3069,7 @@ class CRSPD(FCPanel):
         for col in char_cols:
             isinf = (cd[col] == np.inf) | (cd[col] == -np.inf)
             if isinf.any():
-                cd.loc[isinf:, col] = np.nan
+                cd.loc[isinf, col] = np.nan
 
         self.inspect_data(char_cols, option=['stats'])
         elapsed_time('crspd postprocessed.')
